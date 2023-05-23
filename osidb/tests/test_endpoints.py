@@ -1377,7 +1377,7 @@ class TestEndpoints(object):
             "type": "EXTERNAL",
             "url": "https://httpd.apache.org/link123",
             "description": "link description",
-            "embargoed": "false",
+            "embargoed": False,
         }
 
         response = auth_client.post(
