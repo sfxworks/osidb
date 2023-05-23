@@ -1782,6 +1782,9 @@ class TestEndpointsBZAPIKey:
             "unembargo_dt": "2000-1-1T22:03:26.065Z",
             "cvss3": "3.7/CVSS:3.0/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
             "embargoed": False,
+            "component": "curl",
+            "impact": "CRITICAL",
+            "source": "INTERNET",
         }
         response = auth_client.post(f"{test_api_uri}/flaws", flaw_data, format="json")
         assert response.status_code == 400
