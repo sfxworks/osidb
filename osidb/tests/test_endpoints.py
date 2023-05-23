@@ -8,6 +8,7 @@ from django.contrib.auth.models import Group, User
 from django.utils import timezone
 from django.utils.timezone import datetime
 from freezegun import freeze_time
+from rest_framework import status
 from rest_framework.exceptions import ValidationError
 
 from osidb.filters import FlawFilter
@@ -22,6 +23,7 @@ from .factories import (
     FlawCommentFactory,
     FlawFactory,
     FlawMetaFactory,
+    FlawReferenceFactory,
     TrackerFactory,
 )
 
@@ -89,6 +91,20 @@ class TestEndpoints(object):
 
         body = response.json()
         assert len(body["comments"]) == 2
+
+    def test_get_flaw_with_references(self, auth_client, test_api_uri):
+        """retrieve specific flaw with flawreferences from endpoint"""
+        flaw = FlawFactory()
+
+        response = auth_client.get(f"{test_api_uri}/flaws/{flaw.cve_id}")
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data["references"]) == 0
+
+        FlawReferenceFactory(flaw=flaw)
+
+        response = auth_client.get(f"{test_api_uri}/flaws/{flaw.cve_id}")
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data["references"]) == 1
 
     def test_get_flaw(self, auth_client, test_api_uri):
         """retrieve specific flaw from endpoint"""
@@ -1349,6 +1365,77 @@ class TestEndpoints(object):
 
         response = auth_client.get(affect_url)
         assert response.status_code == 404
+
+    def test_flawreference_create(self, auth_client, test_api_uri):
+        """
+        Test the creation of FlawReference records via a REST API POST request.
+        """
+        flaw = FlawFactory()
+
+        flawreference_data = {
+            "flaw": str(flaw.uuid),
+            "type": "EXTERNAL",
+            "url": "https://httpd.apache.org/link123",
+            "description": "link description",
+            "embargoed": "false",
+        }
+
+        response = auth_client.post(
+            f"{test_api_uri}/flaws/{str(flaw.uuid)}/references",
+            flawreference_data,
+            format="json",
+            HTTP_BUGZILLA_API_KEY="SECRET",
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        created_uuid = response.data["uuid"]
+
+        response = auth_client.get(
+            f"{test_api_uri}/flaws/{str(flaw.uuid)}/references/{created_uuid}"
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["uuid"] == created_uuid
+
+    def test_flawreference_update(self, auth_client, test_api_uri):
+        """
+        Test the update of FlawReference records via a REST API PUT request.
+        """
+        flaw = FlawFactory()
+        flawreference = FlawReferenceFactory(flaw=flaw)
+
+        response = auth_client.get(
+            f"{test_api_uri}/flaws/{str(flaw.uuid)}/references/{flawreference.uuid}"
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["url"] == "https://httpd.apache.org/link123"
+
+        updated_data = response.json().copy()
+        updated_data["url"] = "https://httpd.apache.org/link456"
+
+        response = auth_client.put(
+            f"{test_api_uri}/flaws/{str(flaw.uuid)}/references/{flawreference.uuid}",
+            {**updated_data},
+            format="json",
+            HTTP_BUGZILLA_API_KEY="SECRET",
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["url"] == "https://httpd.apache.org/link456"
+
+    def test_flawreference_delete(self, auth_client, test_api_uri):
+        """
+        Test the deletion of FlawReference records via a REST API DELETE request.
+        """
+        flaw = FlawFactory()
+        flawreference = FlawReferenceFactory(flaw=flaw)
+
+        url = f"{test_api_uri}/flaws/{str(flaw.uuid)}/references/{flawreference.uuid}"
+        response = auth_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+
+        response = auth_client.delete(url, HTTP_BUGZILLA_API_KEY="SECRET")
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+        response = auth_client.get(url)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_tracker_create(self, auth_client, test_api_uri):
         """

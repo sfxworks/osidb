@@ -15,6 +15,7 @@ djangorestframework
 djangorestframework-csv
 djangorestframework-simplejwt
 djangorestframework-xml
+drf-nested-routers
 drf-spectacular
 flower
 gevent
