@@ -1845,6 +1845,12 @@ class FlawMeta(AlertMixin, TrackingMixin, ACLMixin):
 class FlawCommentManager(ACLMixinManager, TrackingMixinManager):
     """flawcomment manager"""
 
+    def pending(self):
+        """
+        Get new pending comments that are about to be submitted to bugzilla.
+        """
+        return super().get_queryset().filter(external_system_id="")
+
     @staticmethod
     def create_flawcomment(flaw, external_system_id, comment, **extra_fields):
         """return a new flawcomment or update an existing flawcomment without saving"""
@@ -1855,6 +1861,18 @@ class FlawCommentManager(ACLMixinManager, TrackingMixinManager):
             flawcomment.meta_attr = comment
             return flawcomment
         except ObjectDoesNotExist:
+            # In-place upgrade of a temporary pending comment to preserve uuid.
+            pending = FlawComment.objects.pending().filter(
+                flaw=flaw, order=extra_fields["order"]
+            )
+            if pending.exists():
+                flawcomment = pending.first()
+                flawcomment.external_system_id = external_system_id
+                flawcomment.meta_attr = comment
+                for k, v in extra_fields.items():
+                    setattr(flawcomment, k, v)
+                return flawcomment
+
             return FlawComment(
                 flaw=flaw,
                 external_system_id=external_system_id,
@@ -1863,7 +1881,11 @@ class FlawCommentManager(ACLMixinManager, TrackingMixinManager):
             )
 
 
-class FlawComment(TrackingMixin, ACLMixin):
+class FlawComment(
+    ACLMixin,
+    BugzillaSyncMixin,
+    TrackingMixin,
+):
     """Model representing flaw comments"""
 
     class FlawCommentType(models.TextChoices):
@@ -1882,7 +1904,7 @@ class FlawComment(TrackingMixin, ACLMixin):
     )
 
     # external comment id
-    external_system_id = models.CharField(max_length=100)
+    external_system_id = models.CharField(max_length=100, blank=True)
 
     # explicitly define comment ordering, from BZ comment 'count'
     order = models.IntegerField(null=True)
@@ -1909,6 +1931,52 @@ class FlawComment(TrackingMixin, ACLMixin):
             "external_system_id",
             "created_dt",
         )
+
+        # A constraint on unique per-flaw order, together with flaw lock on
+        # POST create(), is necessary to enable clients to perform bulk
+        # comment creation.
+        #
+        # Testing showed that if the UniqueConstraint is not used, a lock on
+        # the flaw (select_for_update() in the create() view) is not enough
+        # to prevent concurrent POST requests from downloading new comments
+        # from bugzilla in their respective transactions. These new comments
+        # could be the ones created by concurrent transactions and the default
+        # isolation_level used in OSIDB's configuration allows such parallel
+        # transactions. These new comments would then result in duplicated
+        # committed instances once their respective transactions would finish.
+        #
+        # There's a possibility that UniqueConstraint is not the proper
+        # solution, that the proper solution is the ACCESS EXCLUSIVE lock, and
+        # that UniqueConstraint just works because it slows down DB write
+        # operations. ACCESS EXCLUSIVE is not very portable, hence the constraint.
+        #
+        # Also see FlawCommentView.create().
+        #
+        # This constraint doesn't interfere with downloading data from bugzilla.
+        # Bugzilla generates the comment numbers sequentially when accessed through the flaw:
+        # https://github.com/bugzilla/bugzilla/blob/2f203a360eab075742d42fd228a4233a3d45d221/Bugzilla/Bug.pm#L3756
+        # And using timestamp-based database ordering when accessed individually:
+        # https://github.com/bugzilla/bugzilla/blob/2f203a360eab075742d42fd228a4233a3d45d221/Bugzilla/Comment.pm#L471
+        # Therefore, there shouldn't be a situation where one flaw has multiple
+        # comments with the same "count" ("count" is stored as "order" in osidb).
+        constraints = [
+            models.UniqueConstraint(
+                fields=["flaw", "order"], name="unique_per_flaw_comment_nums"
+            ),
+        ]
+
+    def bzsync(self, *args, bz_api_key=None, **kwargs):
+        """
+        Bugzilla sync of the FlawComment instance and of the related Flaw instance.
+        """
+
+        self.save()
+
+        # Comments need to be synced through flaw
+        # If external_system_id is blank, BugzillaSaver posts the new comment
+        # and FlawCollector loads the new comment and updates this FlawComment
+        # instance to match bugzilla.
+        self.flaw.save(*args, bz_api_key=bz_api_key, **kwargs)
 
 
 class FlawReferenceManager(ACLMixinManager, TrackingMixinManager):
