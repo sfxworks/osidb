@@ -1,32 +1,35 @@
-import json
-import re
-from itertools import chain
+# import json
+# import re
+# from itertools import chain
 
-from collectors.bzimport.constants import ANALYSIS_TASK_PRODUCT
-from osidb.models import Flaw, FlawImpact, PsModule
+# from collectors.bzimport.constants import ANALYSIS_TASK_PRODUCT
+# from osidb.models import Flaw, FlawImpact, PsModule
 
-from .cc import CCBuilder
-from .constants import DATE_FMT
-from .srtnotes import SRTNotesBuilder
+# from .cc import CCBuilder
+# from .constants import DATE_FMT
+# from .srtnotes import SRTNotesBuilder
+from apps.bbsync.query import BugzillaQueryBuilder
 
 
-class BugzillaQueryBuilder:
+class TrackerBugzillaQueryBuilder(BugzillaQueryBuilder):
     """
-    Bugzilla bug query builder
-    containing shared funtionality
-
-    https://bugzilla.redhat.com/docs/en/html/api/index.html
+    Bugzilla tracker bug query builder
+    to generate general tracker save query
     """
 
-    def __init__(self, instance, old_instance=None):
+    @property
+    def tracker(self):
         """
-        init stuff
-        parametr old_instance is optional as there is no old instance on creation
-        and if not set we consider the query to be a create query
+        concrete name shortcut
         """
-        self.instance = instance
-        self.old_instance = old_instance
-        self._query = None
+        return self.instance
+
+    @property
+    def old_tracker(self):
+        """
+        concrete name shortcut
+        """
+        return self.old_instance
 
     @property
     def query(self):
@@ -40,45 +43,7 @@ class BugzillaQueryBuilder:
 
     @property
     def creation(self):
-        """
-        boolean property True on creation and False on update
-        """
-        return self.old_instance is None
-
-    def generate(self):
-        """
-        generate query
-        """
-        raise NotImplementedError
-
-    IMPACT_TO_SEVERITY_PRIORITY = {
-        FlawImpact.CRITICAL: "urgent",
-        FlawImpact.IMPORTANT: "high",
-        FlawImpact.MODERATE: "medium",
-        FlawImpact.LOW: "low",
-        FlawImpact.NOVALUE: "unspecified",
-    }
-
-
-class FlawBugzillaQueryBuilder(BugzillaQueryBuilder):
-    """
-    Bugzilla flaw bug query builder
-    to generate general flaw save query
-    """
-
-    @property
-    def flaw(self):
-        """
-        concrete name shortcut
-        """
-        return self.instance
-
-    @property
-    def old_flaw(self):
-        """
-        concrete name shortcut
-        """
-        return self.old_instance
+        return self.old_flaw is None
 
     def generate(self):
         """
@@ -113,6 +78,14 @@ class FlawBugzillaQueryBuilder(BugzillaQueryBuilder):
             "platform": "All",
             "version": "unspecified",
         }
+
+    IMPACT_TO_SEVERITY_PRIORITY = {
+        FlawImpact.CRITICAL: "urgent",
+        FlawImpact.IMPORTANT: "high",
+        FlawImpact.MODERATE: "medium",
+        FlawImpact.LOW: "low",
+        FlawImpact.NOVALUE: "unspecified",
+    }
 
     def generate_unconditional(self):
         """
