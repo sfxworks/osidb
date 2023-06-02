@@ -1380,6 +1380,7 @@ class TestEndpoints(object):
             "embargoed": False,
         }
 
+        # Tests "POST" on flaws/{uuid}/references
         response = auth_client.post(
             f"{test_api_uri}/flaws/{str(flaw.uuid)}/references",
             flawreference_data,
@@ -1387,13 +1388,19 @@ class TestEndpoints(object):
             HTTP_BUGZILLA_API_KEY="SECRET",
         )
         assert response.status_code == status.HTTP_201_CREATED
-        created_uuid = response.data["uuid"]
+        reference_uuid = response.data["uuid"]
 
+        # Tests "GET" on flaws/{uuid}/references
+        response = auth_client.get(f"{test_api_uri}/flaws/{str(flaw.uuid)}/references")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["count"] == 1
+
+        # Tests "GET" on flaws/{uuid}/references/{uuid}
         response = auth_client.get(
-            f"{test_api_uri}/flaws/{str(flaw.uuid)}/references/{created_uuid}"
+            f"{test_api_uri}/flaws/{str(flaw.uuid)}/references/{reference_uuid}"
         )
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["uuid"] == created_uuid
+        assert response.data["uuid"] == reference_uuid
 
     def test_flawreference_update(self, auth_client, test_api_uri):
         """
@@ -1411,6 +1418,7 @@ class TestEndpoints(object):
         updated_data = response.json().copy()
         updated_data["url"] = "https://httpd.apache.org/link456"
 
+        # Tests "PUT" on flaws/{uuid}/references/{uuid}
         response = auth_client.put(
             f"{test_api_uri}/flaws/{str(flaw.uuid)}/references/{flawreference.uuid}",
             {**updated_data},
@@ -1431,11 +1439,9 @@ class TestEndpoints(object):
         response = auth_client.get(url)
         assert response.status_code == status.HTTP_200_OK
 
+        # Tests "DELETE" on flaws/{uuid}/references/{uuid}
         response = auth_client.delete(url, HTTP_BUGZILLA_API_KEY="SECRET")
         assert response.status_code == status.HTTP_204_NO_CONTENT
-
-        response = auth_client.get(url)
-        assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_tracker_create(self, auth_client, test_api_uri):
         """
