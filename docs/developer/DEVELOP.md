@@ -786,3 +786,23 @@ Sometimes, the secrets found by the tool can be false-positives, if you believe 
 Django signals are globally disabled via an autouse pytest fixture in the
 global `conftest.py` file, in order to enable them for a specific test
 you can mark your test with the `@pytest.mark.enable_signals` decorator.
+
+### Configuring CORS Rules for API Access
+
+In order to permit API access from different domains, Cross-Origin Resource Sharing (CORS) is configured using the corsheaders Django app. This is crucial for development scenarios where changes to CORS rules are necessary, and for operations to load in CORS URLs correctly.
+
+The following Python code in the settings.py file handles this behavior:
+
+```python
+import os
+
+CORS_ALLOWED_ORIGINS = os.getenv('WEBUI_URLS', '').split(',')
+```
+
+Ensure that the WEBUI_URLS environment variable is set correctly when deploying the application, for instance:
+
+```
+WEBUI_URLS=https://example-ui-domain.com,https://another-example-ui-domain.com
+```
+
+This configuration allows developers to adjust CORS rules as needed and gives operations the information necessary for setting up the correct environment.
